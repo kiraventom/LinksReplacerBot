@@ -49,7 +49,7 @@ public static class Program
         var message = update.Message;
         var sender = message.From!;
 
-        Log.Information("Received message [{messageId}] with text '{text}' from user [{userId}] '{firstname}'", message.MessageId, message.Text, sender.Id, sender.FirstName);
+        Log.Information("Received message [{messageId}] with text '{text}' from user [{userId}] '{firstname}'", message.MessageId, message.Text ?? message.Caption, sender.Id, sender.FirstName);
 
         // First handle commands, so /start will always work even if listener is active
         var botCommand = message.Entities?.FirstOrDefault(e => e.Type == MessageEntityType.BotCommand);
@@ -71,16 +71,7 @@ public static class Program
                 case REPLACE_COMMAND:
                     var newLink = text.Substring(REPLACE_COMMAND.Length + 1);
                     Log.Information("Link is {link}", newLink);
-                    if (!newLink.StartsWith("https://"))
-                    {
-                        newLink = "https://" + newLink;
-                        Log.Information("Fixed link to {link}", newLink);
-                    }
-                    else if (!newLink.StartsWith("http://"))
-                    {
-                        newLink = "http://" + newLink;
-                        Log.Information("Fixed link to {link}", newLink);
-                    }
+                    newLink = FixLink(newLink);
 
                     var isValid = Uri.TryCreate(newLink, UriKind.Absolute, out _);
                     if (!isValid)
@@ -113,7 +104,7 @@ public static class Program
                             };
 
                             newEntities.Add(newEntity);
-                            Log.Information("Replaced text link {link} at [{offset}:{length}] with {link}", entity.Url, entity.Offset, entity.Length, newLink);
+                            Log.Information("Replaced text link {oldlink} at [{offset}:{length}] with {link}", entity.Url, entity.Offset, entity.Length, newLink);
                         }
                         else
                         {
@@ -194,7 +185,7 @@ public static class Program
             if (message.MediaGroupId is null || _messages[sender.Id].Any(m => m.MediaGroupId != message.MediaGroupId))
             {
                 Log.Warning("Received message with MediaGroupId {mediaGroupId}, but expected {existingMediaGroupId}", message.MediaGroupId ?? "null", _messages[sender.Id].First().MediaGroupId);
-                await client.SendMessage(chatId: sender.Id, text: "Send new link in format {REPLACE_COMMAND} <link> or send {START_COMMAND} to reset");
+                await client.SendMessage(chatId: sender.Id, text: $"Send new link in format {REPLACE_COMMAND} <link> or send {START_COMMAND} to reset");
                 return;
             }
 
@@ -241,6 +232,23 @@ public static class Program
         }
 
         return;
+    }
+
+    private static string FixLink(string newLink)
+    {
+       if (newLink.StartsWith("https://"))
+          return newLink;
+
+       if (newLink.StartsWith("http://"))
+          return newLink;
+
+       if (newLink.StartsWith("tg://"))
+          return newLink;
+
+       newLink = "https://" + newLink;
+       Log.Information("Fixed link to {link}", newLink);
+
+       return newLink;
     }
 
     private static Logger InitLogger(string projectDirPath)
